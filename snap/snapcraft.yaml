@@ -52,7 +52,7 @@ parts:
     plugin: nil
     source: https://github.com/seerr-team/seerr.git
     source-type: git
-    source-branch: main
+    source-tag: v2.7.3
     
     build-snaps:
       - node/22/stable

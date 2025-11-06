@@ -12,11 +12,23 @@ Official project: https://github.com/seerr-team/seerr
 
 ## Installation
 
+### Stable Channel (Recommended)
+
 ```bash
 sudo snap install geebeevv-seerr
 ```
 
 The service will autostart automatically on installation.
+
+### Beta Channel (Early Testing)
+
+Help test new releases before they reach stable:
+
+```bash
+sudo snap install geebeevv-seerr --beta
+```
+
+Beta builds are automatically created when upstream releases new versions and go through testing before promotion to stable.
 
 ## Configuration
 
@@ -37,6 +49,17 @@ sudo snap restart geebeevv-seerr
 - This snap runs as a service with root privileges
 - The application communicates with Plex/Emby/Sonarr/Radarr via API calls
 - Data persists across snap updates in the common directory
+
+## For Maintainers
+
+This repository uses an automated workflow to track upstream releases. When Seerr releases a new version:
+
+1. GitHub Actions automatically detects it
+2. Updates the `beta` branch and triggers a Snapcraft build
+3. Creates a Pull Request with release notes and testing checklist
+4. After testing and approval, merging promotes to stable channel
+
+See [WORKFLOW.md](WORKFLOW.md) for detailed documentation.
 
 ## License
 

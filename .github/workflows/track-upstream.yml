@@ -1,0 +1,175 @@
+name: Track Upstream Seerr Releases
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0 # Get full history for branch operations
+
+      - name: Get latest upstream release
+        id: upstream
+        run: |
+          # Fetch latest release from seerr-team/seerr
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/seerr-team/seerr/releases/latest)
+          LATEST_VERSION=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+          RELEASE_URL=$(echo "$LATEST_RELEASE" | jq -r '.html_url')
+          RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
+          RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
+          PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
+          IS_PRERELEASE=$(echo "$LATEST_RELEASE" | jq -r '.prerelease')
+
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "published_at=$PUBLISHED_AT" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+
+          # Save release body to file for PR description
+          echo "$RELEASE_BODY" > /tmp/release_notes.md
+
+          echo "Latest upstream version: $LATEST_VERSION"
+
+      - name: Get current snap version
+        id: current
+        run: |
+          # Extract current version from snapcraft.yaml
+          CURRENT_VERSION=$(grep '^version:' snap/snapcraft.yaml | sed "s/version: '\(.*\)'/\1/" | tr -d ' ')
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current snap version: $CURRENT_VERSION"
+
+      - name: Check if update is needed
+        id: check
+        run: |
+          LATEST="${{ steps.upstream.outputs.latest_version }}"
+          CURRENT="${{ steps.current.outputs.current_version }}"
+
+          # Remove 'v' prefix for comparison
+          LATEST_CLEAN=$(echo "$LATEST" | sed 's/^v//')
+          CURRENT_CLEAN=$(echo "$CURRENT" | sed 's/^v//')
+
+          echo "Comparing versions: $CURRENT_CLEAN -> $LATEST_CLEAN"
+
+          if [ "$LATEST_CLEAN" != "$CURRENT_CLEAN" ]; then
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+            echo "Update needed!"
+          else
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "Already up to date"
+          fi
+
+      - name: Checkout beta branch
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          git fetch origin beta
+          git checkout beta
+          git pull origin beta
+
+      - name: Update snapcraft.yaml
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          LATEST="${{ steps.upstream.outputs.latest_version }}"
+          LATEST_CLEAN=$(echo "$LATEST" | sed 's/^v//')
+
+          # Update version field
+          sed -i "s/^version: '.*'/version: '$LATEST_CLEAN'/" snap/snapcraft.yaml
+
+          # Update source-tag (change from source-branch to source-tag)
+          # First check if source-branch exists and replace it
+          if grep -q "source-branch:" snap/snapcraft.yaml; then
+            sed -i "/source-branch:/d" snap/snapcraft.yaml
+            # Add source-tag after source-type line
+            sed -i "/source-type: git/a\    source-tag: $LATEST" snap/snapcraft.yaml
+          else
+            # Just update existing source-tag
+            sed -i "s/source-tag: .*/source-tag: $LATEST/" snap/snapcraft.yaml
+          fi
+
+          echo "Updated snapcraft.yaml to version $LATEST_CLEAN (tag: $LATEST)"
+
+      - name: Commit and push to beta
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          LATEST="${{ steps.upstream.outputs.latest_version }}"
+          git add snap/snapcraft.yaml
+          git commit -m "Update to Seerr $LATEST"
+          git push origin beta
+
+      - name: Create Pull Request
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST="${{ steps.upstream.outputs.latest_version }}"
+          LATEST_CLEAN=$(echo "$LATEST" | sed 's/^v//')
+          RELEASE_URL="${{ steps.upstream.outputs.release_url }}"
+          RELEASE_NAME="${{ steps.upstream.outputs.release_name }}"
+          PUBLISHED_AT="${{ steps.upstream.outputs.published_at }}"
+          IS_PRERELEASE="${{ steps.upstream.outputs.is_prerelease }}"
+
+          # Format published date
+          PUBLISHED_DATE=$(date -d "$PUBLISHED_AT" "+%B %d, %Y" 2>/dev/null || echo "$PUBLISHED_AT")
+
+          # Build PR body
+          cat > /tmp/pr_body.md <<EOF
+          ## Seerr $LATEST Release
+
+          **Upstream release:** $RELEASE_URL
+          **Published:** $PUBLISHED_DATE
+          $(if [ "$IS_PRERELEASE" = "true" ]; then echo "**⚠️ Pre-release version**"; fi)
+
+          ### Upstream Release Notes
+
+          EOF
+
+          # Append upstream release notes
+          cat /tmp/release_notes.md >> /tmp/pr_body.md
+
+          # Add testing checklist
+          cat >> /tmp/pr_body.md <<EOF
+
+          ---
+
+          ### Testing Checklist
+
+          After Snapcraft builds to \`beta\` channel (\`snap refresh geebeevv-seerr --beta\`):
+
+          - [ ] Snap installs successfully on amd64
+          - [ ] Snap installs successfully on arm64 (if applicable)
+          - [ ] Service starts without errors
+          - [ ] Web UI is accessible at http://localhost:5055
+          - [ ] Can log in / basic functionality works
+          - [ ] No obvious regressions
+          - [ ] Check logs for errors: \`snap logs geebeevv-seerr\`
+
+          ### Approval Process
+
+          Once testing is complete, merge this PR to promote to \`stable\` channel.
+
+          **Fast-track:** If this is a security release, skip beta testing period and merge immediately.
+          EOF
+
+          # Create PR (will only create if one doesn't already exist)
+          gh pr create \
+            --base main \
+            --head beta \
+            --title "Update to Seerr $LATEST" \
+            --body-file /tmp/pr_body.md \
+            --label "upstream-update" \
+            || echo "PR may already exist"
