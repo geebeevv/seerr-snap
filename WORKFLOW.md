@@ -33,9 +33,9 @@ When a new version is found:
 
 When the `beta` branch is updated:
 
-- Snapcraft.io (or Launchpad) automatically builds the snap
-- The build is published to the **beta** or **edge** channel
-- Users can test with: `snap install geebeevv-seerr --beta`
+- Snapcraft.io automatically detects the change and builds the snap
+- The build is published to the **edge** channel by default
+- Users can test with: `snap install geebeevv-seerr --edge`
 
 ### 4. Pull Request Review (Manual)
 
@@ -52,27 +52,35 @@ The auto-generated PR includes:
    - Breaking changes
    - Security fixes (fast-track these!)
    - New dependencies or requirements
-2. Test the beta channel build:
+2. Test the edge build:
    ```bash
-   snap refresh geebeevv-seerr --beta
+   snap refresh geebeevv-seerr --edge
    sudo snap logs geebeevv-seerr
    ```
 3. Verify the checklist items in the PR
-4. Merge when satisfied
+4. **Manually promote to beta channel** (if desired):
+   - Go to snapcraft.io → your snap → **Releases** tab
+   - Find the edge build
+   - Click **"Release"** → select **beta** channel
+   - Users can now test with: `snap refresh geebeevv-seerr --beta`
+5. Merge the PR when satisfied
 
-### 5. Stable Release (Automatic)
+### 5. Stable Release (Semi-Automatic)
 
 When you merge the PR:
 
 - The `main` branch is updated
-- Snapcraft automatically builds from `main`
-- The new version is published to the **stable** channel
-- Users on stable get the update
+- Snapcraft automatically builds from `main` → publishes to **edge** channel
+- **Manually promote to stable channel**:
+  - Go to snapcraft.io → your snap → **Releases** tab
+  - Find the latest edge build from `main` branch
+  - Click **"Release"** → select **stable** channel
+  - Users on stable get the update
 
 ## Branch Strategy
 
-- **`main`** - Stable releases, builds to `stable` channel
-- **`beta`** - Testing releases, builds to `beta`/`edge` channel
+- **`main`** - Stable releases, builds to `edge` (manually promote to `stable`)
+- **`beta`** - Testing releases, builds to `edge` (manually promote to `beta` if desired)
 
 ## Snap Channels
 
@@ -92,12 +100,38 @@ You can manually trigger the upstream check without waiting for the daily schedu
 4. Select `main` branch
 5. Click **Run workflow**
 
+## Manual Channel Promotion
+
+Snapcraft.io automatically builds all branches to the **edge** channel. You need to manually promote builds to beta/stable:
+
+### Promoting to Beta (Optional)
+1. Go to [snapcraft.io](https://snapcraft.io) → your snap
+2. Click the **Releases** tab
+3. Find the edge build (from `beta` branch)
+4. Click **"Release"**
+5. Select **beta** channel
+6. Confirm the release
+
+### Promoting to Stable (After PR Merge)
+1. Go to [snapcraft.io](https://snapcraft.io) → your snap
+2. Click the **Releases** tab
+3. Find the edge build (from `main` branch)
+4. Click **"Release"**
+5. Select **stable** channel
+6. Confirm the release
+
+**Note:** You can skip promoting to beta and test directly from edge if preferred.
+
 ## Security Releases
 
 If an upstream release contains security fixes:
 
 1. The workflow will still create a PR as normal
-2. **Fast-track the merge** - skip the beta testing period
+2. **Fast-track the process:**
+   - Test quickly from edge
+   - Skip beta promotion
+   - Merge PR immediately
+   - Manually promote edge → stable right away
 3. The PR description will indicate if it's a pre-release
 
 ## Troubleshooting
@@ -116,10 +150,11 @@ If an upstream release contains security fixes:
 
 ### Snapcraft Not Building
 
-- Verify Snapcraft.io/Launchpad is connected to your repository
-- Check that branch-to-channel mappings are configured:
-  - `main` → `stable`
-  - `beta` → `beta` or `edge`
+- Verify Snapcraft.io is connected to your GitHub repository
+- Go to snapcraft.io → your snap → **Builds** tab
+- Check for build errors or failed builds
+- Note: All branches automatically build to `edge` channel by default
+- You must manually promote to `beta` or `stable` via the **Releases** tab
 
 ### Version Mismatch
 
