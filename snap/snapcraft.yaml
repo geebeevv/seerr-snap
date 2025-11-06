@@ -1,0 +1,276 @@
+name: geebeevv-seerr
+base: core24
+version: '2.7.3'
+summary: Open-source media request and discovery manager
+description: |
+  This is an UNOFFICIAL Snap of the seerr application.  Attempts were made to keep file size down,
+  but the application would tend to crash if I got too aggressive.  I am not affiliated in any way
+  with the official project.
+
+  Seerr is a free and open source software application for managing requests 
+  for your media library. It integrates with Jellyfin, Plex, and Emby media 
+  servers, as well as Sonarr and Radarr.
+  
+  Official Github for the Seer/Jellyseer project can be found here: https://github.com/seerr-team/seerr
+
+  Because this Snap runs as a service, it runs as ROOT.  This means it cannot read files not owned by root.
+  This particular application should not need access to the filesystem as I believe it talks to
+  Plex/Emby/Sonarr/Radarr via API calls.
+  
+grade: stable
+confinement: strict
+compression: lzo
+
+platforms:
+  amd64:
+  arm64:
+
+apps:
+  seerr:
+    command: bin/seerr-launcher
+    daemon: simple
+    restart-condition: always
+    install-mode: enable
+    plugs:
+      - network
+      - network-bind
+    environment:
+      NODE_ENV: production
+      PORT: 5055
+      # Seerr configuration paths (using snap-native directories)
+      CONFIG_DIRECTORY: $SNAP_COMMON/config
+      LOG_LEVEL: info
+
+hooks:
+  install:
+    plugs:
+      - network
+      - network-bind
+
+parts:
+  seerr:
+    plugin: nil
+    source: https://github.com/seerr-team/seerr.git
+    source-type: git
+    source-branch: main
+    
+    build-snaps:
+      - node/22/stable
+    
+    stage-snaps:
+      - node/22/stable
+    
+    build-packages:
+      - git
+      - curl
+      - python3
+      - build-essential
+    
+    stage-packages:
+      - ca-certificates
+    
+    override-build: |
+      # Install pnpm 9.x specifically (project requires ^9.0.0)
+      npm install -g pnpm@9
+
+      # Copy source files
+      cp -r $CRAFT_PART_SRC/* $CRAFT_PART_BUILD/
+
+      cd $CRAFT_PART_BUILD
+
+      # Install dependencies using pnpm
+      # Skip Cypress binary download (testing framework not needed in production)
+      # Skip husky git hooks (development only)
+      CYPRESS_INSTALL_BINARY=0 HUSKY=0 pnpm install --frozen-lockfile
+
+      # Remove PostgreSQL driver since we only use SQLite (saves ~5-10 MB)
+      pnpm remove pg
+
+      # Build the application (same as Dockerfile line 27)
+      pnpm build
+
+      # Remove development dependencies (Dockerfile line 30)
+      # This significantly reduces node_modules size
+      pnpm prune --prod --ignore-scripts
+
+      # Run node-prune for additional 20-30% node_modules reduction
+      # Downloads and runs tj/node-prune to remove unnecessary files
+      # TEMPORARILY DISABLED - was causing sqlite3 loading issues
+      # echo "=== Running node-prune for additional cleanup ==="
+      # curl -sfL https://gobinaries.com/tj/node-prune | sh
+      # ./bin/node-prune $CRAFT_PART_BUILD/node_modules
+
+      # Manual cleanup of large unnecessary packages that pnpm prune misses
+      # Remove platform-specific binaries we don't need (musl versions - we use gnu)
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/@next+swc-linux-x64-musl@* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/@swc+core-linux-x64-musl@* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/@img+sharp-libvips-linuxmusl-x64@* 2>/dev/null || true
+
+      # REMOVED: More aggressive musl removal was breaking sqlite3
+      # These targeted removals above are sufficient for Next.js/SWC/Sharp packages
+
+      # Remove react-native and related packages (not needed for server)
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/react-native@* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/jsc-android@* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/@react-native+* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/react-native 2>/dev/null || true
+
+      # Remove development tools
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/react-devtools-core@* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/typescript@* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/typescript 2>/dev/null || true
+
+      # Remove duplicate/older versions of ace-builds (keep latest only)
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/ace-builds@1.15.2 2>/dev/null || true
+
+      # Remove duplicate caniuse-lite versions (keep latest only)
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/caniuse-lite@1.0.30001636 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/caniuse-lite@1.0.30001700 2>/dev/null || true
+
+      # Remove build artifacts we don't need at runtime (Dockerfile line 32)
+      rm -rf $CRAFT_PART_BUILD/src
+      rm -rf $CRAFT_PART_BUILD/server
+      rm -rf $CRAFT_PART_BUILD/.next/cache
+      rm -rf $CRAFT_PART_BUILD/charts
+      rm -rf $CRAFT_PART_BUILD/gen-docs
+      rm -rf $CRAFT_PART_BUILD/docs
+
+      # Additional cleanup for snap
+      rm -rf $CRAFT_PART_BUILD/.git
+      rm -rf $CRAFT_PART_BUILD/.github
+      # Keep API yml files - they're needed at runtime for API documentation
+      # rm -rf $CRAFT_PART_BUILD/overseerr-api.yml
+      # rm -rf $CRAFT_PART_BUILD/jellyseerr-api.yml
+      rm -rf $CRAFT_PART_BUILD/test
+      rm -rf $CRAFT_PART_BUILD/cypress
+      rm -rf $CRAFT_PART_BUILD/config
+      rm -rf $CRAFT_PART_BUILD/.next/trace
+      find $CRAFT_PART_BUILD/.next -name "*.map" -delete 2>/dev/null || true
+
+      # Clean up the main node_modules directory (now pruned to production only)
+      # Remove documentation and non-essential files
+      find $CRAFT_PART_BUILD/node_modules -name "*.md" -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -name "README*" -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -name "CHANGELOG*" -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -name "LICENSE*" -type f -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -name "*.map" -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -name "*.flow" -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -name "*.ts" -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -name "*.d.ts" -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -type d -name "test" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -type d -name "__tests__" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -name "*.test.js" -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -name "*.spec.js" -delete 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -type d -name "example" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -type d -name "doc" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -type d -name "coverage" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -type d -name ".bin" -exec rm -rf {} + 2>/dev/null || true
+
+      # Remove sharp binaries for platforms we're not building for
+      # Keep only linux-x64 for amd64 builds, linux-arm64v8 for arm64 builds
+      find $CRAFT_PART_BUILD/node_modules/sharp/vendor -type f ! -name "*linux*" -delete 2>/dev/null || true
+
+      # Additional Sharp cleanup - remove non-linux libvips binaries
+      find $CRAFT_PART_BUILD/node_modules/@img -type d -name "*darwin*" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules/@img -type d -name "*win32*" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -path "*sharp*" -name "*darwin*" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -path "*sharp*" -name "*win32*" -exec rm -rf {} + 2>/dev/null || true
+
+      # Remove SQLite3 binaries for platforms we don't need
+      # DISABLED: This was too aggressive with pnpm structure and broke sqlite3 loading
+      # find $CRAFT_PART_BUILD/node_modules/sqlite3/build -type f -name "*.node" ! -name "*linux*" -delete 2>/dev/null || true
+      # find $CRAFT_PART_BUILD/node_modules/sqlite3/lib/binding -type d ! -name "*linux*" -exec rm -rf {} + 2>/dev/null || true
+
+      # Enhanced size reporting before copying
+      echo "=== Size breakdown before copying ==="
+      du -sh $CRAFT_PART_BUILD/dist 2>/dev/null || echo "dist: N/A"
+      du -sh $CRAFT_PART_BUILD/.next 2>/dev/null || echo ".next: N/A"
+      du -sh $CRAFT_PART_BUILD/node_modules 2>/dev/null || echo "node_modules: N/A"
+      du -sh $CRAFT_PART_BUILD/node_modules/.pnpm 2>/dev/null || echo "node_modules/.pnpm: N/A"
+      du -sh $CRAFT_PART_BUILD/public 2>/dev/null || echo "public: N/A"
+      echo ""
+      echo "=== Top 20 largest node_modules packages ==="
+      du -h --max-depth=3 $CRAFT_PART_BUILD/node_modules/.pnpm 2>/dev/null | sort -rh | head -20 || echo "Unable to analyze node_modules"
+      echo ""
+      echo "=== Total uncompressed size ==="
+      du -sh $CRAFT_PART_BUILD 2>/dev/null || echo "Unable to calculate total"
+      echo "==================================="
+
+      # Copy to install location (matching Dockerfile approach)
+      mkdir -p $CRAFT_PART_INSTALL/opt/seerr
+
+      # Copy everything needed for runtime (same as Dockerfile line 60)
+      cp -r $CRAFT_PART_BUILD/dist $CRAFT_PART_INSTALL/opt/seerr/
+      cp -r $CRAFT_PART_BUILD/.next $CRAFT_PART_INSTALL/opt/seerr/
+      cp -r $CRAFT_PART_BUILD/public $CRAFT_PART_INSTALL/opt/seerr/
+      cp -r $CRAFT_PART_BUILD/node_modules $CRAFT_PART_INSTALL/opt/seerr/
+      cp $CRAFT_PART_BUILD/package.json $CRAFT_PART_INSTALL/opt/seerr/
+      cp $CRAFT_PART_BUILD/pnpm-lock.yaml $CRAFT_PART_INSTALL/opt/seerr/
+      cp $CRAFT_PART_BUILD/next.config.js $CRAFT_PART_INSTALL/opt/seerr/
+      # Copy API documentation files (needed at runtime)
+      cp $CRAFT_PART_BUILD/overseerr-api.yml $CRAFT_PART_INSTALL/opt/seerr/ 2>/dev/null || true
+      cp $CRAFT_PART_BUILD/jellyseerr-api.yml $CRAFT_PART_INSTALL/opt/seerr/ 2>/dev/null || true
+      
+      # Create launcher script
+      mkdir -p $CRAFT_PART_INSTALL/bin
+      cat > $CRAFT_PART_INSTALL/bin/seerr-launcher << 'EOF'
+      #!/bin/bash
+
+      # Set up Seerr directories using snap-native locations
+      # $SNAP_DATA = /var/snap/seerr/current/ (version-specific)
+      # $SNAP_COMMON = /var/snap/seerr/common/ (shared across versions - preferred for config)
+
+      # Create necessary directories if they don't exist
+      mkdir -p "$SNAP_COMMON/config"
+      mkdir -p "$SNAP_COMMON/logs"
+      mkdir -p "$SNAP_COMMON/cache"
+
+      # Set Seerr-specific environment variables
+      export CONFIG_DIRECTORY="$SNAP_COMMON/config"
+
+      # SQLite database will be stored in $SNAP_COMMON
+      # This ensures data persists across snap updates without migration
+      cd $SNAP/opt/seerr
+      exec node dist/index.js
+      EOF
+      chmod +x $CRAFT_PART_INSTALL/bin/seerr-launcher
+
+  install-hook:
+    plugin: nil
+    override-build: |
+      mkdir -p $CRAFT_PART_INSTALL/snap/hooks
+      cat > $CRAFT_PART_INSTALL/snap/hooks/install << 'EOF'
+      #!/bin/bash
+      # This hook runs on snap install
+      # Sets up initial directories and configuration
+
+      # Create persistent data directories
+      mkdir -p "$SNAP_COMMON/config"
+      mkdir -p "$SNAP_COMMON/logs"
+      mkdir -p "$SNAP_COMMON/cache"
+
+      # Create a default .env file if it doesn't exist
+      if [ ! -f "$SNAP_COMMON/config/settings.json" ]; then
+        echo "Initializing Seerr configuration..."
+        # Seerr will create its own settings on first run
+      fi
+
+      echo "Seerr data directory: $SNAP_COMMON"
+      echo "Configuration will be stored in: $SNAP_COMMON/config"
+      echo "Database will be stored in: $SNAP_COMMON/config"
+      echo ""
+      echo "Seerr will autostart on boot. To manually control it:"
+      echo "  sudo snap stop geebeevv-seerr"
+      echo "  sudo snap start geebeevv-seerr"
+      echo "  sudo snap restart geebeevv-seerr"
+      echo ""
+      echo "Access Seerr at: http://localhost:5055"
+      EOF
+      chmod +x $CRAFT_PART_INSTALL/snap/hooks/install
+
+layout:
+  /usr/local/share:
+    bind: $SNAP/usr/local/share
