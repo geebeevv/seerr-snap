@@ -1,21 +1,27 @@
 name: geebeevv-seerr
 base: core24
 version: '2.7.3'
-summary: Open-source media request and discovery manager
+title: geebeevv-seerr
+summary: Unofficial Release of Seerr
 description: |
-  This is an UNOFFICIAL Snap of the seerr application.  Attempts were made to keep file size down,
-  but the application would tend to crash if I got too aggressive.  I am not affiliated in any way
-  with the official project.
+  Seerr is a free and open source media request and discovery manager. It integrates with Jellyfin, Plex, and Emby media servers, as well as Sonarr and Radarr for automated content management.
 
-  Seerr is a free and open source software application for managing requests 
-  for your media library. It integrates with Jellyfin, Plex, and Emby media 
-  servers, as well as Sonarr and Radarr.
-  
-  Official Github for the Seer/Jellyseer project can be found here: https://github.com/seerr-team/seerr
+  ## Features
+  - Media requests and discovery management
+  - Integration with Jellyfin, Plex, and Emby
+  - Sonarr and Radarr integration for automated downloads
 
-  Because this Snap runs as a service, it runs as ROOT.  This means it cannot read files not owned by root.
-  This particular application should not need access to the filesystem as I believe it talks to
-  Plex/Emby/Sonarr/Radarr via API calls.
+  ## Access
+  Web interface: http://localhost:5055
+
+  ## Important Notes
+  This application primarily communicates via API calls and does not require direct filesystem access.
+
+links:
+  source-code: https://github.com/geebee/seerr-snap
+  website: https://github.com/seerr-team/seerr
+  contact: mailto:cosmiccuttlefish@geebeemail.com
+  issues: https://github.com/geebee/seerr-snap/issues
   
 grade: stable
 confinement: strict
@@ -31,6 +37,10 @@ apps:
     daemon: simple
     restart-condition: always
     install-mode: enable
+    # Allow 30 seconds for graceful shutdown (Node.js app needs time to flush databases)
+    stop-timeout: 30s
+    # Restart daemon on snap refresh for clean state (prevents old code + new files issues)
+    refresh-mode: restart
     plugs:
       - network
       - network-bind
@@ -93,40 +103,6 @@ parts:
       # This significantly reduces node_modules size
       pnpm prune --prod --ignore-scripts
 
-      # Run node-prune for additional 20-30% node_modules reduction
-      # Downloads and runs tj/node-prune to remove unnecessary files
-      # TEMPORARILY DISABLED - was causing sqlite3 loading issues
-      # echo "=== Running node-prune for additional cleanup ==="
-      # curl -sfL https://gobinaries.com/tj/node-prune | sh
-      # ./bin/node-prune $CRAFT_PART_BUILD/node_modules
-
-      # Manual cleanup of large unnecessary packages that pnpm prune misses
-      # Remove platform-specific binaries we don't need (musl versions - we use gnu)
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/@next+swc-linux-x64-musl@* 2>/dev/null || true
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/@swc+core-linux-x64-musl@* 2>/dev/null || true
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/@img+sharp-libvips-linuxmusl-x64@* 2>/dev/null || true
-
-      # REMOVED: More aggressive musl removal was breaking sqlite3
-      # These targeted removals above are sufficient for Next.js/SWC/Sharp packages
-
-      # Remove react-native and related packages (not needed for server)
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/react-native@* 2>/dev/null || true
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/jsc-android@* 2>/dev/null || true
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/@react-native+* 2>/dev/null || true
-      rm -rf $CRAFT_PART_BUILD/node_modules/react-native 2>/dev/null || true
-
-      # Remove development tools
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/react-devtools-core@* 2>/dev/null || true
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/typescript@* 2>/dev/null || true
-      rm -rf $CRAFT_PART_BUILD/node_modules/typescript 2>/dev/null || true
-
-      # Remove duplicate/older versions of ace-builds (keep latest only)
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/ace-builds@1.15.2 2>/dev/null || true
-
-      # Remove duplicate caniuse-lite versions (keep latest only)
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/caniuse-lite@1.0.30001636 2>/dev/null || true
-      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/caniuse-lite@1.0.30001700 2>/dev/null || true
-
       # Remove build artifacts we don't need at runtime (Dockerfile line 32)
       rm -rf $CRAFT_PART_BUILD/src
       rm -rf $CRAFT_PART_BUILD/server
@@ -167,37 +143,6 @@ parts:
       find $CRAFT_PART_BUILD/node_modules -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true
       find $CRAFT_PART_BUILD/node_modules -type d -name "doc" -exec rm -rf {} + 2>/dev/null || true
       find $CRAFT_PART_BUILD/node_modules -type d -name "coverage" -exec rm -rf {} + 2>/dev/null || true
-      find $CRAFT_PART_BUILD/node_modules -type d -name ".bin" -exec rm -rf {} + 2>/dev/null || true
-
-      # Remove sharp binaries for platforms we're not building for
-      # Keep only linux-x64 for amd64 builds, linux-arm64v8 for arm64 builds
-      find $CRAFT_PART_BUILD/node_modules/sharp/vendor -type f ! -name "*linux*" -delete 2>/dev/null || true
-
-      # Additional Sharp cleanup - remove non-linux libvips binaries
-      find $CRAFT_PART_BUILD/node_modules/@img -type d -name "*darwin*" -exec rm -rf {} + 2>/dev/null || true
-      find $CRAFT_PART_BUILD/node_modules/@img -type d -name "*win32*" -exec rm -rf {} + 2>/dev/null || true
-      find $CRAFT_PART_BUILD/node_modules -path "*sharp*" -name "*darwin*" -exec rm -rf {} + 2>/dev/null || true
-      find $CRAFT_PART_BUILD/node_modules -path "*sharp*" -name "*win32*" -exec rm -rf {} + 2>/dev/null || true
-
-      # Remove SQLite3 binaries for platforms we don't need
-      # DISABLED: This was too aggressive with pnpm structure and broke sqlite3 loading
-      # find $CRAFT_PART_BUILD/node_modules/sqlite3/build -type f -name "*.node" ! -name "*linux*" -delete 2>/dev/null || true
-      # find $CRAFT_PART_BUILD/node_modules/sqlite3/lib/binding -type d ! -name "*linux*" -exec rm -rf {} + 2>/dev/null || true
-
-      # Enhanced size reporting before copying
-      echo "=== Size breakdown before copying ==="
-      du -sh $CRAFT_PART_BUILD/dist 2>/dev/null || echo "dist: N/A"
-      du -sh $CRAFT_PART_BUILD/.next 2>/dev/null || echo ".next: N/A"
-      du -sh $CRAFT_PART_BUILD/node_modules 2>/dev/null || echo "node_modules: N/A"
-      du -sh $CRAFT_PART_BUILD/node_modules/.pnpm 2>/dev/null || echo "node_modules/.pnpm: N/A"
-      du -sh $CRAFT_PART_BUILD/public 2>/dev/null || echo "public: N/A"
-      echo ""
-      echo "=== Top 20 largest node_modules packages ==="
-      du -h --max-depth=3 $CRAFT_PART_BUILD/node_modules/.pnpm 2>/dev/null | sort -rh | head -20 || echo "Unable to analyze node_modules"
-      echo ""
-      echo "=== Total uncompressed size ==="
-      du -sh $CRAFT_PART_BUILD 2>/dev/null || echo "Unable to calculate total"
-      echo "==================================="
 
       # Copy to install location (matching Dockerfile approach)
       mkdir -p $CRAFT_PART_INSTALL/opt/seerr
@@ -271,6 +216,3 @@ parts:
       EOF
       chmod +x $CRAFT_PART_INSTALL/snap/hooks/install
 
-layout:
-  /usr/local/share:
-    bind: $SNAP/usr/local/share
