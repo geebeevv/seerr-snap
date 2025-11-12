@@ -17,12 +17,6 @@ description: |
   ## Important Notes
   This application primarily communicates via API calls and does not require direct filesystem access.
 
-links:
-  source-code: https://github.com/geebee/seerr-snap
-  website: https://github.com/seerr-team/seerr
-  contact: mailto:cosmiccuttlefish@geebeemail.com
-  issues: https://github.com/geebee/seerr-snap/issues
-  
 grade: stable
 confinement: strict
 compression: lzo
@@ -143,6 +137,27 @@ parts:
       find $CRAFT_PART_BUILD/node_modules -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true
       find $CRAFT_PART_BUILD/node_modules -type d -name "doc" -exec rm -rf {} + 2>/dev/null || true
       find $CRAFT_PART_BUILD/node_modules -type d -name "coverage" -exec rm -rf {} + 2>/dev/null || true
+
+      # Remove platform-specific binaries we absolutely don't need
+      # Sharp: remove darwin and win32 binaries (we only run on linux)
+      find $CRAFT_PART_BUILD/node_modules/@img -type d -name "*darwin*" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules/@img -type d -name "*win32*" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -path "*sharp*" -name "*darwin*" -exec rm -rf {} + 2>/dev/null || true
+      find $CRAFT_PART_BUILD/node_modules -path "*sharp*" -name "*win32*" -exec rm -rf {} + 2>/dev/null || true
+
+      # Remove .bin directories (CLI tools not needed at runtime)
+      find $CRAFT_PART_BUILD/node_modules -type d -name ".bin" -exec rm -rf {} + 2>/dev/null || true
+
+      # Remove frontend-only packages that server code will never use
+      # React-native is purely a frontend framework, completely unnecessary for server
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/react-native@* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/jsc-android@* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/@react-native+* 2>/dev/null || true
+      rm -rf $CRAFT_PART_BUILD/node_modules/react-native 2>/dev/null || true
+
+      # Remove development tools
+      # React-devtools-core is purely for debugging, not needed at runtime
+      rm -rf $CRAFT_PART_BUILD/node_modules/.pnpm/react-devtools-core@* 2>/dev/null || true
 
       # Copy to install location (matching Dockerfile approach)
       mkdir -p $CRAFT_PART_INSTALL/opt/seerr
