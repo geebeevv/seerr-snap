@@ -2,13 +2,17 @@
 
 Unofficial snap package for [Seerr](https://github.com/seerr-team/seerr) - a media request and discovery manager for Jellyfin, Plex, and Emby.
 
-## About
+## Description
 
-This is an **UNOFFICIAL** snap package of the Seerr application. Attempts were made to keep file size down while maintaining stability.
+Seerr is an automated media request and discovery manager that integrates with Jellyfin, Plex, and Emby media servers, as well as Sonarr and Radarr for content management.
 
-Seerr is a free and open source software application for managing requests for your media library. It integrates with Jellyfin, Plex, and Emby media servers, as well as Sonarr and Radarr.
+**Official project**: https://github.com/seerr-team/seerr
 
-Official project: https://github.com/seerr-team/seerr
+## Known Issues
+
+- Runs as a daemon with root privileges
+- API-based communication only (no direct filesystem access to media libraries)
+- Unofficial package - not supported by upstream Seerr developers
 
 ## Installation
 
@@ -18,11 +22,11 @@ Official project: https://github.com/seerr-team/seerr
 sudo snap install geebeevv-seerr
 ```
 
-The service will autostart automatically on installation.
+The service autostarts on installation.
 
 ### Beta Channel (Early Testing)
 
-Help test new releases before they reach stable:
+Test new releases before they reach stable:
 
 ```bash
 sudo snap install geebeevv-seerr --beta
@@ -30,13 +34,15 @@ sudo snap install geebeevv-seerr --beta
 
 Beta builds are automatically created when upstream releases new versions and go through testing before promotion to stable.
 
-## Configuration
+## Access
+
+Web interface: http://localhost:5055
 
 Configuration and database files are stored in `/var/snap/geebeevv-seerr/common/config/`
 
-Access the web interface at: http://localhost:5055
+## Service Management
 
-## Manual Control
+Control the service using standard snap commands:
 
 ```bash
 sudo snap start geebeevv-seerr
@@ -44,15 +50,20 @@ sudo snap stop geebeevv-seerr
 sudo snap restart geebeevv-seerr
 ```
 
-## Important Notes
+View service logs:
 
-- This snap runs as a service with root privileges
-- The application communicates with Plex/Emby/Sonarr/Radarr via API calls
-- Data persists across snap updates in the common directory
+```bash
+sudo snap logs geebeevv-seerr
+sudo snap logs geebeevv-seerr -f  # Follow mode
+```
 
-## For Maintainers
+## Data Persistence
 
-This repository uses an automated workflow to track upstream releases. When Seerr releases a new version:
+Data persists across snap updates in the common directory (`/var/snap/geebeevv-seerr/common/`).
+
+## Maintenance
+
+This repository uses automated GitHub Actions to track upstream releases. When Seerr releases a new version:
 
 1. GitHub Actions automatically detects it
 2. Updates the `beta` branch and triggers a Snapcraft build
