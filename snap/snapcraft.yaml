@@ -1,6 +1,6 @@
 name: geebeevv-seerr
 base: core24
-version: '3.0.1'
+version: '3.1.0'
 summary: Open-source media request and discovery manager
 description: |
   This is an UNOFFICIAL Snap of the seerr application.  Attempts were made to keep file size down,
@@ -52,7 +52,7 @@ parts:
     plugin: nil
     source: https://github.com/seerr-team/seerr.git
     source-type: git
-    source-tag: v3.0.1
+    source-tag: v3.1.0
     
     build-snaps:
       - node/22/stable
