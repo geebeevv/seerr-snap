@@ -74,8 +74,8 @@ parts:
       - ca-certificates
     
     override-build: |
-      # Install pnpm 9.x specifically (project requires ^9.0.0)
-      npm install -g pnpm@9
+      # Install pnpm 10.x specifically (project requires ^10.0.0)
+      npm install -g pnpm@10
 
       # Copy source files
       cp -r $CRAFT_PART_SRC/* $CRAFT_PART_BUILD/
