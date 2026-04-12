@@ -171,8 +171,7 @@ parts:
       cp $CRAFT_PART_BUILD/pnpm-lock.yaml $CRAFT_PART_INSTALL/opt/seerr/
       cp $CRAFT_PART_BUILD/next.config.js $CRAFT_PART_INSTALL/opt/seerr/
       # Copy API documentation files (needed at runtime)
-      cp $CRAFT_PART_BUILD/overseerr-api.yml $CRAFT_PART_INSTALL/opt/seerr/ 2>/dev/null || true
-      cp $CRAFT_PART_BUILD/jellyseerr-api.yml $CRAFT_PART_INSTALL/opt/seerr/ 2>/dev/null || true
+      cp $CRAFT_PART_BUILD/seerr-api.yml $CRAFT_PART_INSTALL/opt/seerr/ 2>/dev/null || true
       
       # Create launcher script
       mkdir -p $CRAFT_PART_INSTALL/bin
